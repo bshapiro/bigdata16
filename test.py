@@ -11,6 +11,14 @@ sc = SparkContext()
 num_vertices, edge_tuples = sc.pickleFile('hdfs:///pickles/default_run/connections.pkl')
 vertex_reads = sc.pickleFile('hdfs:///pickles/default_run/ovr_list.pkl')
 
+conf = SparkConf()
+sc = SparkContext(conf=conf)
+sqlContext = SQLContext(sc)
+
+num_vertices, edge_tuples = load(open('pickles/connections.pkl', 'rb'))
+vertex_reads = load(open('pickles/ovr_list.pkl', 'rb'))
+>>>>>>> 1fac9a35256cc9b2b8023b9602bab25025255dd2
+
 vertex_ids = set()
 for item in edge_tuples:
     vertex_ids.add((str(item[0]),))
