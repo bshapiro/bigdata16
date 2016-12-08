@@ -2,6 +2,7 @@ import sys, os, argparse, re, pysam
 import cPickle as pickle
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SQLContext
+#import pydoop.hdfs as hdfs
 
 
 PRINT_DEBUG = False
@@ -21,6 +22,8 @@ class OverlapParser:
         self.prev_ref = None
         self.max_gap=max_gap
 
+#        f = hdfs.open(filename)
+#        self.infile = pysam.AlignmentFile(f)
         self.infile = pysam.AlignmentFile(filename if filename else '-', 'rb')
         self.reads_iter = self.infile.fetch()
 
@@ -101,21 +104,27 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
 
     ovr = OverlapParser(args.in_fname, args.max_gap)
-    
+
+    groupCount = 0
+    edge_tuples_strings = []
     while True:
         group, cons = ovr.next_group()
-
+        
         if not group:
             break
+        
+        groupCount += 1
+        edge_tuples_strings.extend([(str(item[0]), str(item[1])) for item in cons])
+
+        
     
- #   vertex_ids = set()
+#    vertex_ids = set()
 #    for item in edge_tuples:
 #        vertex_ids.add((str(item[0]),))
 #        vertex_ids.add((str(item[1]),))
 
-    vertex_strings = map(str, range(len(group)))
-    edge_tuples_strings = [(str(item[0]), str(item[1])) for item in cons]
-
+    vertex_strings = map(str, range(groupCount))
+    
     e = sqlContext.createDataFrame(edge_tuples_strings, ['src', 'dst'])
     v = sqlContext.createDataFrame(vertex_strings, ['id'])
 
