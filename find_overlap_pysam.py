@@ -52,6 +52,20 @@ class OverlapParser:
 
         return group, con_list
 
+    def write_groups(self, groups, filename):
+
+        outfile = pysam.AlignmentFile(filename, "wb", template = self.infile)
+
+        if type(groups[0]) != tuple:
+            groups = [groups]
+
+        lines = list()
+        for size, ref, st, en in groups:
+            for read in self.infile.fetch(ref, st, en):
+                outfile.write(read)
+
+        outfile.close()
+
     def parse_read(self, read):
         
         ovr_ret = con_ret = None
@@ -64,7 +78,7 @@ class OverlapParser:
 
         if read.reference_start - self.gmax > self.max_gap or self.prev_ref != read.reference_name:
             if self.group_size > 0:
-                ovr_ret = (self.group_size, self.prev_ref, self.gmin, self.gmax)
+                ovr_ret = (self.unique_reads, self.prev_ref, self.gmin, self.gmax)
                 self.group_nm += 1
                 self.group_size = 0
                 self.unique_reads = 0
@@ -111,15 +125,19 @@ if __name__ == "__main__":
 
     groupCount = 0
     edge_tuples_strings = []
+
+    groups = list()
     while True:
         group, cons = ovr.next_group()
-        
+        groups.append(group) 
+    
         if not group:
             break
         
         groupCount += 1
         edge_tuples_strings.extend([(str(item[0]), str(item[1])) for item in cons])
-        
+     
+   
 #    vertex_ids = set()
 #    for item in edge_tuples:
 #        vertex_ids.add((str(item[0]),))
