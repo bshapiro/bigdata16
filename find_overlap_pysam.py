@@ -2,7 +2,7 @@ import sys, os, argparse, re, pysam
 import cPickle as pickle
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SQLContext
-#import pydoop.hdfs as hdfs
+import pydoop.hdfs as hdfs
 
 
 PRINT_DEBUG = False
@@ -14,6 +14,7 @@ class OverlapParser:
 
     def __init__(self, filename=None, max_gap=100):
         self.group_size = 0
+        self.unique_reads = 0
         self.gmax = 0
         self.gmin = 0
         self.group_nm = 0
@@ -56,7 +57,7 @@ class OverlapParser:
         ovr_ret = con_ret = None
         
         if read == None:
-            return (self.group_size, self.prev_ref, self.gmin, self.gmax), None
+            return (self.unique_reads, self.prev_ref, self.gmin, self.gmax), None
 
         if read.flag & 0x4 > 0:
             return None, None
@@ -64,16 +65,19 @@ class OverlapParser:
         if read.reference_start - self.gmax > self.max_gap or self.prev_ref != read.reference_name:
             if self.group_size > 0:
                 ovr_ret = (self.group_size, self.prev_ref, self.gmin, self.gmax)
+                self.group_nm += 1
+                self.group_size = 0
+                self.unique_reads = 0
+
             self.gmin = read.reference_start
             self.gmax = read.reference_end
-            self.group_nm += 1
-            self.group_size = 0
-
         else:
             self.gmax = max(self.gmax, read.reference_end)
         
+        self.group_size += 1
+
         if read.flag & 0x900 == 0:
-            self.group_size += 1
+            self.unique_reads += 1
 
         self.prev_ref = read.reference_name
         
@@ -115,9 +119,7 @@ if __name__ == "__main__":
         
         groupCount += 1
         edge_tuples_strings.extend([(str(item[0]), str(item[1])) for item in cons])
-
         
-    
 #    vertex_ids = set()
 #    for item in edge_tuples:
 #        vertex_ids.add((str(item[0]),))
