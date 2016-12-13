@@ -48,6 +48,18 @@ class OverlapParser:
                 con_list.extend(con)
 
         return group, con_list
+    
+    def get_groups(self, groups):
+
+        if type(groups[0]) != tuple:
+            groups = [groups]
+
+        lines = list()
+        for size, ref, st, en in groups:
+            for read in self.infile.fetch(ref, st, en):
+                lines.append(read.tostring())
+
+        return lines
 
     def write_groups(self, groups, filename):
 
