@@ -1,8 +1,8 @@
+from graphframes import GraphFrame
 import sys, os, argparse, re, pysam
 import cPickle as pickle
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SQLContext
-import pydoop.hdfs as hdfs
 
 
 PRINT_DEBUG = False
@@ -22,9 +22,6 @@ class OverlapParser:
         self.connections = set()
         self.prev_ref = None
         self.max_gap=max_gap
-
-#        f = hdfs.open(filename)
-#        self.infile = pysam.AlignmentFile(f)
         self.infile = pysam.AlignmentFile(filename if filename else '-', 'rb')
         self.reads_iter = self.infile.fetch()
 
@@ -70,7 +67,7 @@ class OverlapParser:
         
         ovr_ret = con_ret = None
         
-        if read == None:
+        if not read:
             return (self.unique_reads, self.prev_ref, self.gmin, self.gmax), None
 
         if read.flag & 0x4 > 0:
@@ -115,18 +112,22 @@ class OverlapParser:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="")
     parser.add_argument('in_fname', default=None, nargs='?', type=str, help="Position sorted SAM file, or stdin if not included.")
-    parser.add_argument('-o', dest='out_dir', default='hdfs:///', type=str, help="Output directory. Default='hdfs:///'")
+    parser.add_argument('-o', dest='out_dir', default='/', type=str, help="Output directory. Default is home hdfs directory / ")
     parser.add_argument('-g', dest='max_gap', default=100, type=int, help="Maximum gap between two reads for them to be part of same group")
     parser.add_argument('-d', dest='debug', action='store_true', help="Print debug messages to stderr (if -O not also included)")
-    
-    args = parser.parse_args(sys.argv[1:])
 
+    conf = SparkConf()
+    sc = SparkContext(conf=conf)
+    sqlContext = SQLContext(sc)
+
+    args = parser.parse_args(sys.argv[1:])
     ovr = OverlapParser(args.in_fname, args.max_gap)
 
     groupCount = 0
     edge_tuples_strings = []
 
     groups = list()
+
     while True:
         group, cons = ovr.next_group()
         groups.append(group) 
@@ -136,17 +137,22 @@ if __name__ == "__main__":
         
         groupCount += 1
         edge_tuples_strings.extend([(str(item[0]), str(item[1])) for item in cons])
-     
-   
-#    vertex_ids = set()
-#    for item in edge_tuples:
-#        vertex_ids.add((str(item[0]),))
-#        vertex_ids.add((str(item[1]),))
 
-    vertex_strings = map(str, range(groupCount))
+    vertex_strings = [(str(i),) for i in  xrange(groupCount)]
     
     e = sqlContext.createDataFrame(edge_tuples_strings, ['src', 'dst'])
     v = sqlContext.createDataFrame(vertex_strings, ['id'])
 
-    e.rdd.saveAsPickleFile(args.out_dir)
-    v.rdd.saveAsPickleFile(args.out_dir)
+    e.rdd.saveAsPickleFile(args.out_dir+"edges.pkl")
+    v.rdd.saveAsPickleFile(args.out_dir+"vertices.pkl")
+    
+    #g = GraphFrame(v, e)
+    #result = g.connectedComponents()
+
+    #mapped_result = result.rdd.flatMap(lambda row: [(row[1], vertex_reads[int(row[0])][i]) for i in range(len(vertex_reads[int(row[0])]))])
+    #result = mapped_result.groupByKey()
+
+    #result.saveAsPickleFile(args.out_dir+"connCompRdd.pkl")
+
+    sc.stop()
+
