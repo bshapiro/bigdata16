@@ -143,16 +143,21 @@ if __name__ == "__main__":
     e = sqlContext.createDataFrame(edge_tuples_strings, ['src', 'dst'])
     v = sqlContext.createDataFrame(vertex_strings, ['id'])
 
-    e.rdd.saveAsPickleFile(args.out_dir+"edges.pkl")
-    v.rdd.saveAsPickleFile(args.out_dir+"vertices.pkl")
-    
-    #g = GraphFrame(v, e)
-    #result = g.connectedComponents()
+#    e.rdd.saveAsPickleFile(args.out_dir+"edges.pkl")
+#    v.rdd.saveAsPickleFile(args.out_dir+"vertices.pkl")
 
-    #mapped_result = result.rdd.flatMap(lambda row: [(row[1], vertex_reads[int(row[0])][i]) for i in range(len(vertex_reads[int(row[0])]))])
-    #result = mapped_result.groupByKey()
+#    e = sc.pickleFile('hdfs:///pickles/edges.pkl')
+#    v = sc.pickleFile('hdfs:///pickles/vertices.pkl')    
 
-    #result.saveAsPickleFile(args.out_dir+"connCompRdd.pkl")
+    g = GraphFrame(v, e)
+    result = g.connectedComponents()
+
+    component_to_group_rdd = result.rdd.flatMap(lambda row: [(row[1], row[0]) for i in range(groups[int(row[0])])[0]])
+    partitioned_rdd = component_to_group_rdd.partitionBy(k)
+    partitioned_rdd.saveAsPickleFile(args.out_dir+"connCompParitionsRDD.pkl")
+
+
+#    stringtie_results_rdd = partioned_rdd.pipe('run_stringtie.sh')
 
     sc.stop()
 
