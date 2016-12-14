@@ -19,11 +19,13 @@ def rowLambda(row):
     in_fname = SparkFiles.get('ERR188044_chrX_sorted.bam')
     ovr = 100
     ovr = OverlapParser(in_fname, max_gap)
-    return [(row[1], samLine) for samLine in ovr.get_group(groups[int(row[0])])]
+    group = groups[int(row[0])]
+    return [(row[1], (samLine, group[0])) for samLine in ovr.get_group(group)]
 
 in_fname ='/home/Rachel/ERR188044_chrX_sorted.bam'
 out_dir = '/pickles'
 max_gap = 100
+num_partitions = 10
 ovr = OverlapParser(in_fname, max_gap)
     
 edge_tuples_strings = []
@@ -41,13 +43,21 @@ while True:
 vertex_strings = [(str(i),) for i in  xrange(groupCount)]
     
 result_rdd = sc.pickleFile('/pickles/connCompParitionsRDD.pkl')   
-#    component_to_group_rdd = result_rdd.flatMap(lambda row: [(row[1], row[0]) for i in range(groups[int(row[0])][0])])
-component_to_group_rdd = result_rdd.flatMap(lambda row: rowLambda(row))
-component_to_group_rdd = result_rdd.flatMap(lambda row: [(row[1], samLine) for samLine in ovr.get_group(groups[int(row[0])])])
-#    partitioned_rdd = component_to_group_rdd.partitionBy(args.numParts)
 
-for line in component_to_group_rdd.take(10000): 
+component_to_group_rdd = result_rdd.flatMap(lambda row: rowLambda(row))
+#component_to_group_rdd = result_rdd.flatMap(lambda row: [(row[1], samLine) for samLine in ovr.get_group(groups[int(row[0])])])
+partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions)
+
+def sumAll(partitionIter): 
+    yield sum([line[1][1] for line in partitionIter])
+
+group_nums_rdd = partitioned_rdd.mapPartitions(sumAll)
+
+for line in component_to_group_rdd.take(5): 
     print line
+
+#Gives a list of length num_partitions, of the sum total of unique reads corresponding to the partitions (in order) 
+readCountsByPartition = group_nums_rdd.collect()
     
 sc.stop()
 
