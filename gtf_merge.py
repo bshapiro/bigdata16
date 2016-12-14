@@ -4,58 +4,46 @@ fpkm_re = re.compile("FPKM \"([\d\.]+)\"")
 tpm_re = re.compile("TPM \"([\d\.]+)\"")
 
 def main(args):
-    global PRINT_DEBUG
-
-    parser = argparse.ArgumentParser(description="")
-    #parser.add_argument('in_fname', default=None, nargs='?', type=str, help="Input file, or stdin if not included.")
-    parser.add_argument('-o', dest='out_fname', type=str, help="Output file, or stdout if not included.")
-    parser.add_argument('-d', dest='debug', action='store_true', help="Print debug messages to stderr (if -O not also included)")
-    #parser.add_argument('-p', dest='out_prefix', default='./', type=str, help="Output file prefix. Will create directories if needed.")
-    #parser.add_argument('-x', dest='x', default=1, type=int, help="")
-
-    args = parser.parse_args(args)
-
-    PRINT_DEBUG = args.debug
-    #infile = sys.stdin if not args.in_fname else open(args.in_fname, 'r')
-    outfile = sys.stdout if not args.out_fname else open(args.out_fname, 'w')
+    files = [("../data/ERR188044_chrX_half1.gtf", 1751527),
+             ("../data/ERR188044_chrX_half2.gtf", 772507)]
+    gtfs = [(open(f).readlines(), s) for f, s in files]
+    print "\n".join(merge_gtfs(gtfs))
     
-    #out_prefix = args.out_prefix
-    #if not os.path.exists(os.path.dirname(out_prefix)):
-    #    os.makedirs(os.path.dirname(out_prefix))
 
-    files = [("data/ERR188044_chrX_half1.gtf", 1751527),
-             ("data/ERR188044_chrX_half2.gtf", 772507)]
-
-    total_size = sum([s for n, s in files])
+def merge_gtfs(gtfs):
     
-    lines = list()
+    total_size = sum([size for lines, size in gtfs])
+    
+    gtf_lines = list()
     fpkms = list()
     rpks = list()
 
-    for filename, size in files:
-        f = open(filename)
+    #
+    for lines, size in gtfs:
 
         rpk_total = 0.0
-        lines.append(list())
+        gtf_lines.append(list())
         fpkms.append(list())
 
-        for line in f:
+        for line in lines:
             if line[0] == "#":
                 continue
 
-            lines[-1].append(line)
+            gtf_lines[-1].append(line.strip())
 
             fpkm_m = fpkm_re.search(line)
 
             if fpkm_m:
-                new_fpkm = normalize_fpkm(float(fpkm_m.group(1)), size, total_size)
+                new_fpkm = (float(fpkm_m.group(1)) * size) / total_size
                 fpkms[-1].append(new_fpkm)
         
-        rpks.append(sum(fpkms[-1]) * (total_size/1000000.0))
+        rpks.append(sum(fpkms[-1]) * (total_size)) #Take away the million?
     
+    out_lines = list() 
+
     rpk_total = sum(rpks)
     f = 0
-    for file_lines in lines: 
+    for file_lines in gtf_lines: 
         i = 0 
         for line in file_lines:
             
@@ -66,16 +54,14 @@ def main(args):
                 line = fpkm_re.sub('FPKM "%.6f"' % fpkms[f][i], line)
                 i += 1
 
-            outfile.write(line)
+            out_lines.append(line)
 
 
         f += 1
 
 
-    outfile.close()
+    return out_lines
 
-def normalize_fpkm(fpkm, group_size, total_size):
-    return (fpkm * group_size) / total_size
 
 if __name__ == "__main__":
     main(sys.argv[1:])
