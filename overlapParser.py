@@ -1,0 +1,113 @@
+import sys, os, argparse, re, pysam
+
+MAX_GAP = 100
+MULTIMAP_FLAG = "NH"
+
+class OverlapParser:
+
+    def __init__(self, filename=None, max_gap=100):
+        self.group_size = 0
+        self.unique_reads = 0
+        self.gmax = 0
+        self.gmin = 0
+        self.group_nm = 0
+        self.multimappers = dict()
+        self.connections = set()
+        self.prev_ref = None
+        self.max_gap=max_gap
+        self.filename=filename
+        self.infile = pysam.AlignmentFile(filename, 'rb')
+        self.reads_iter = self.infile.fetch()
+
+        self.eof = False
+        
+    def next_group(self):
+
+        if self.eof:
+            return None, None
+
+        group = None
+        con_list = list()
+
+        while group == None:
+            try:
+                read = self.reads_iter.next()
+            except StopIteration:
+                read = None
+                self.eof = True
+
+            group, con = self.parse_read(read)
+           
+            if con:
+                con_list.extend(con)
+
+        return group, con_list
+    
+    def get_group(self, group): 
+        lines = list()
+        _, ref, st, en = group
+        for read in self.infile.fetch(ref, st, en):
+            if not read.is_unmapped:
+                lines.append(read.tostring(self.infile))
+
+        return lines
+
+    def write_groups(self, groups, filename):
+
+        outfile = pysam.AlignmentFile(filename, "wb", template = self.infile)
+
+        if type(groups[0]) != tuple:
+            groups = [groups]
+
+        lines = list()
+        for size, ref, st, en in groups:
+            for read in self.infile.fetch(ref, st, en):
+                outfile.write(read)
+
+        outfile.close()
+
+    def parse_read(self, read):
+        
+        ovr_ret = con_ret = None
+        
+        if not read:
+            return ( self.unique_reads, self.prev_ref, self.gmin, self.gmax), None
+
+        if read.is_unmapped:
+            return None, None
+
+        if read.reference_start - self.gmax > self.max_gap or self.prev_ref != read.reference_name:
+            if self.group_size > 0:
+                ovr_ret = (self.unique_reads, self.prev_ref, self.gmin, self.gmax)
+                self.group_nm += 1
+                self.group_size = 0
+                self.unique_reads = 0
+
+            self.gmin = read.reference_start
+            self.gmax = read.reference_end
+        else:
+            self.gmax = max(self.gmax, read.reference_end)
+        
+        self.group_size += 1
+
+        if read.flag & 0x900 == 0:
+            self.unique_reads += 1
+
+        self.prev_ref = read.reference_name
+        
+        if read.get_tag(MULTIMAP_FLAG) > 1:
+            neighbors = self.multimappers.get(read.query_name, None)
+            if not neighbors:
+                neighbors = self.multimappers[read.query_name] = set([self.group_nm])
+
+            if not self.group_nm in neighbors:
+
+                con_ret = list()
+                for g in sorted(neighbors):
+                    if not (g, self.group_nm) in self.connections:
+                        con_ret.append((g, self.group_nm))
+                        self.connections.add((g, self.group_nm))
+
+                neighbors.add(self.group_nm)
+
+        return ovr_ret, con_ret
