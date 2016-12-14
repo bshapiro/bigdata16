@@ -15,6 +15,7 @@ do
 done
 
 #echo $tmp_filename
-stringtie -p 8 $tmp_filename
+samtools sort $tmp_filename -o ${tmp_filename}".sam"
+stringtie -p 8 ${tmp_filename}".sam"
 
 #$tmp_filename
