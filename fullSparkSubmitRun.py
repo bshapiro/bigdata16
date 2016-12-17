@@ -9,14 +9,23 @@ conf = SparkConf()
 sc = SparkContext(conf=conf)
 sqlContext = SQLContext(sc)
 
+parser = argparse.ArgumentParser(description="")
+parser.add_argument('in_fname', required=True, nargs='?', type=str, help="Position sorted BAM file. Indexed bam.bai file must be present in same directory.")
+parser.add_argument('-o', dest='out_dir', default='/', type=str, help="Output directory. Default is home hdfs directory / ")
+parser.add_argument('-g', dest='max_gap', default=100, type=int, help="Maximum gap between two reads for them to be part of same group")
+parser.add_argument('-d', dest='debug', action='store_true', help="Print debug messages to stderr (if -O not also included)")
+parser.add_argument('-k', dest='num_parts', default=10, type=int, help="Number partitions, default=10")
+
+args = parser.parse_args(sys.argv[1:])
+in_fname = args.in_fname
+out_dir = args.out_dir
+max_gap = args.max_gap
+num_partitions = args.num_parts
+
 sc.addPyFile('/home/Rachel/bigdata16/gtf_merge.py')
 sc.addPyFile('/home/Rachel/bigdata16/overlapParser.py')
-sc.addFile('/home/Rachel/ERR188044_chrX_sorted.bam')
-sc.addFile('/home/Rachel/ERR188044_chrX_sorted.bam.bai')
-#sc.addFile('/home/Rachel/test.bam')
-#sc.addFile('/home/Rachel/test.bam.bai')
-#sc.addFile('/home/Rachel/ERR188044_chrX_reduced.bam')
-#sc.addFile('/home/Rachel/ERR188044_chrX_reduced.bam.bai')
+sc.addFile(in_fname)
+sc.addFile(in_fname+'.bai')
 sc.addFile("/home/Rachel/bigdata16/stringtie_mod")
 sc.addFile("/usr/bin/stringtie")
 sc.addFile("/usr/bin/samtools")
@@ -29,18 +38,11 @@ MULTIMAP_FLAG = "NH"
 MAX_GAP = 100
         
 def rowLambda(row):
-#    in_fname = SparkFiles.get('test.bam')
-    in_fname = SparkFiles.get('ERR188044_chrX_sorted.bam')
-    ovr = 100
-    ovr = OverlapParser(in_fname, max_gap)
+    spark_fname = SparkFiles.get(in_fname[in_fname.rfind('/')+1:])
+    ovr = OverlapParser(spark_fname, max_gap)
     group = groups[int(row[0])]
     return [(row[1], (samLine, group[0], row[0])) for samLine in ovr.get_group(group)]
 
-#in_fname = '/home/Rachel/test.bam'
-in_fname ='/home/Rachel/ERR188044_chrX_sorted.bam'
-out_dir = '/pickles'
-max_gap = 100
-num_partitions = 16
 ovr = OverlapParser(in_fname, max_gap)
     
 edge_tuples_strings = list()
@@ -79,7 +81,7 @@ gtfFileL = merge_gtfs(gtfList, group_nums_rdd.collect())
 # Should either have Sam's code work entirely with rdds, or use pydoop or 
 # something to write to hdfs.
 gtfFile_rdd = sc.parallelize(gtfFileL)
-gtfFile_rdd.saveAsTextFile('/output/ERR188044_chrX.gtf')
+gtfFile_rdd.saveAsTextFile(out_dir+in_fname.strip('bam')+'.gtf')
 
 sc.stop()
 
