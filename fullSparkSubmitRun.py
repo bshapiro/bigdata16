@@ -59,14 +59,7 @@ vertex_strings = [(str(i),) for i in  xrange(groupCount)]
 e = sqlContext.createDataFrame(edge_tuples_strings, ['src', 'dst'])
 v = sqlContext.createDataFrame(vertex_strings, ['id'])
 g = GraphFrame(v,e)
-result = g.connectedComponents()
-
-#result.rdd.saveAsPickleFile('/pickles/connCompPartitionsRDD_test.pkl')
-#result.rdd.saveAsPickleFile('/pickles/connCompPartitionsRDD_reduced.pkl')    
-result_rdd = result.rdd
-
-#result_rdd = sc.pickleFile('/pickles/connCompPartitionsRDD_reduced.pkl')   
-#result_rdd = sc.pickleFile('/pickles/connCompPartitionsRDD_test.pkl')
+result_rdd = g.connectedComponents().rdd
 
 component_to_group_rdd = result_rdd.flatMap(lambda row: rowLambda(row))
 partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions)
