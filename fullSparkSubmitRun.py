@@ -10,7 +10,7 @@ sc = SparkContext(conf=conf)
 sqlContext = SQLContext(sc)
 
 parser = argparse.ArgumentParser(description="")
-parser.add_argument('in_fname', required=True, nargs='?', type=str, help="Position sorted BAM file. Indexed bam.bai file must be present in same directory.")
+parser.add_argument('-f', dest='in_fname', required=True, type=str, help="Position sorted BAM file. Indexed bam.bai file must be present in same directory.")
 parser.add_argument('-o', dest='out_dir', default='/', type=str, help="Output directory. Default is home hdfs directory / ")
 parser.add_argument('-g', dest='max_gap', default=100, type=int, help="Maximum gap between two reads for them to be part of same group")
 parser.add_argument('-d', dest='debug', action='store_true', help="Print debug messages to stderr (if -O not also included)")
