@@ -6,37 +6,39 @@ tpm_re = re.compile("TPM \"([\d\.]+)\"")
 def main(args):
     files = [("../data/ERR188044_chrX_half1.gtf", 1751527),
              ("../data/ERR188044_chrX_half2.gtf", 772507)]
-    gtfs = [(open(f).readlines(), s) for f, s in files]
-    print "\n".join(merge_gtfs(gtfs))
+    lines = open(files[0][0]).readlines()
+    lines += open(files[1][0]).readlines()
+    sizes = [1761527, 772507]
+    print "\n".join(merge_gtfs(lines, sizes))
     
 
-def merge_gtfs(gtfs):
+def merge_gtfs(gtfs, sizes):
     
-    total_size = sum([size for lines, size in gtfs])
+    total_size = sum(sizes)
     
-    gtf_lines = list()
-    fpkms = list()
+    gtf_lines = [list()]
+    fpkms = [list()]
     rpks = list()
 
-    #
-    for lines, size in gtfs:
+    i = 0
+    for line in gtfs:
+
+        if line[0] == "#":
+            if len(gtf_lines[-1]) > 0:
+                gtf_lines.append(list())
+                fpkms.append(list())
+                i += 1
+            continue
 
         rpk_total = 0.0
-        gtf_lines.append(list())
-        fpkms.append(list())
 
-        for line in lines:
-            if line[0] == "#":
-                continue
+        gtf_lines[-1].append(line.strip())
 
-            gtf_lines[-1].append(line.strip())
-
-            fpkm_m = fpkm_re.search(line)
-
-            if fpkm_m:
-                new_fpkm = (float(fpkm_m.group(1)) * size) / total_size
-                fpkms[-1].append(new_fpkm)
-        
+        fpkm_m = fpkm_re.search(line)
+        if fpkm_m:
+            new_fpkm = (float(fpkm_m.group(1)) * sizes[i]) / total_size
+            fpkms[-1].append(new_fpkm)
+    
         rpks.append(sum(fpkms[-1]) * (total_size)) #Take away the million?
     
     out_lines = list() 
