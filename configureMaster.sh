@@ -1,5 +1,7 @@
-sudo apt-get install emacs
-sudo apt-get install python-pip
-sudo apt-get install python-dev
-sudo apt-get install libz-dev
-sudo pip install pysam
+sudo cp samtools /usr/bin/
+sudo cp stringtie /usr/bin/
+#wget http://ccb.jhu.edu/software/stringtie/dl/stringtie-1.3.1c.Linux_x86_64.tar.gz
+#tar -zxvf stringtie-1.3.1c.Linux_x86_64.tar.gz
+#sudo mv stringtie-1.3.1c.Linux_x86_64/stringtie /usr/bin/
+#rm stringtie-1.3.1c.Linux_x86_64.tar.gz
+#rm -r stringtie-1.3.1c.Linux_x86_64
