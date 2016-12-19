@@ -74,7 +74,7 @@ group_nums_rdd = partitioned_rdd.mapPartitions(sumAll)
 sam_only_partitions = partitioned_rdd.map(lambda line: line[1][0], preservesPartitioning=True)
 piped_output = sam_only_partitions.pipe("stringtie_mod")
 
-gtfList = piped_output.collect() #glom().collect()
+gtfList = piped_output.glom().collect()
 gtfFileL = merge_gtfs(gtfList, group_nums_rdd.collect())
 
 # Super hacky, but I'm putting the list into an rdd to I can save to hdfs.
