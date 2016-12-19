@@ -2,69 +2,78 @@ import sys, os, argparse, re
 
 fpkm_re = re.compile("FPKM \"([\d\.]+)\"")
 tpm_re = re.compile("TPM \"([\d\.]+)\"")
+cov_re = re.compile("cov \"([\d\.]+)\"")
 
 def main(args):
-    files = [("../data/ERR188044_chrX_half1.gtf", 1751527),
-             ("../data/ERR188044_chrX_half2.gtf", 772507)]
-    lines = open(files[0][0]).readlines()
-    lines += open(files[1][0]).readlines()
-    sizes = [1761527, 772507]
-    print "\n".join(merge_gtfs(lines, sizes))
+    files = ["../data/ERR188044_chrX_half1.gtf", "../data/ERR188044_chrX_half2.gtf"]
+    sizes = [1751527, 772507]
+
+    #files = ["test_1.gtf", "test_2.gtf"]
+    #sizes = [11995, 82509]
+    #sizes = [10908, 78849]
+    gtfs = [open(f).readlines() for f in files]
+    for line in merge_gtfs(gtfs, sizes):
+        print line
     
 
 def merge_gtfs(gtfs, sizes):
     
     total_size = sum(sizes)
     
-    gtf_lines = [list()]
-    fpkms = [list()]
-    rpks = list()
+    fpkms = list() #Stores normalized FPKMs for each transcript
 
-    i = 0
-    for line in gtfs:
+    file_rpks = list() #Stores sum of transcript RPK values (fpkm*size) for each file
+    #file_covs = list()
 
-        if line[0] == "#":
-            if len(gtf_lines[-1]) > 0:
-                gtf_lines.append(list())
-                fpkms.append(list())
-                i += 1
-            continue
+    #total_fpkm = 0.0
 
-        rpk_total = 0.0
+    for size, file_lines in zip(sizes, gtfs):
+        file_fpkm = 0.0
+        file_cov = 0.0
+        for line in file_lines:
+            if line[0] == "#":
+                continue
 
-        gtf_lines[-1].append(line.strip())
+            fpkm_m = fpkm_re.search(line)
+            if fpkm_m:
+                #cov_m = cov_re.search(line)
+                #file_cov += float(cov_m.group(1))
 
-        fpkm_m = fpkm_re.search(line)
-        if fpkm_m:
-            new_fpkm = (float(fpkm_m.group(1)) * sizes[i]) / total_size
-            fpkms[-1].append(new_fpkm)
+                new_fpkm = (float(fpkm_m.group(1)) * size) / total_size
+                fpkms.append(new_fpkm)
+                file_fpkm += new_fpkm
+                #total_fpkm += new_fpkm
+        
+        file_rpks.append(file_fpkm * total_size)
+        #file_covs.append(file_cov)
     
-        rpks.append(sum(fpkms[-1]) * (total_size)) #Take away the million?
-    
+    total_rpk = sum(file_rpks)
+
     out_lines = list() 
 
-    rpk_total = sum(rpks)
     f = 0
-    for file_lines in gtf_lines: 
-        i = 0 
+    r = 0
+    for file_lines in gtfs: 
+        tpm_factor = file_rpks[r] / total_rpk
+        r += 1  
+
         for line in file_lines:
-            
+            if line[0] == "#":
+                continue
+
             tpm_m = tpm_re.search(line)
             if tpm_m:
-                new_tpm = float(tpm_m.group(1))*rpks[f] / rpk_total
+                new_tpm = float(tpm_m.group(1)) * tpm_factor
+                #new_tpm = (1000000*fpkms[f])/total_fpkm
+                #new_tpm = float(tpm_m.group(1)) * file_covs[r-1] / sum(file_covs)
                 line = tpm_re.sub('TPM "%.6f"' % new_tpm, line)
-                line = fpkm_re.sub('FPKM "%.6f"' % fpkms[f][i], line)
-                i += 1
+                line = fpkm_re.sub('FPKM "%.6f"' % fpkms[f], line)
+                f += 1
 
-            out_lines.append(line)
-
-
-        f += 1
-
+            out_lines.append(line.strip())
 
     return out_lines
 
 
 if __name__ == "__main__":
     main(sys.argv[1:])
-
