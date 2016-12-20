@@ -47,17 +47,15 @@ ovr = OverlapParser(in_fname, max_gap)
     
 edge_tuples_strings = list()
 groups = list()
-groupCount = 0
 
 while True:
     group, cons = ovr.next_group()
-    groups.append(group)  
     if not group:
         break
-    groupCount += 1
+    groups.append(group)
     edge_tuples_strings.extend([(str(item[0]), str(item[1])) for item in cons])
 
-vertex_strings = [(str(i),) for i in  xrange(groupCount)]
+vertex_strings = [(str(i),) for i in  xrange(len(groups))]
 e = sqlContext.createDataFrame(edge_tuples_strings, ['src', 'dst'])
 v = sqlContext.createDataFrame(vertex_strings, ['id'])
 g = GraphFrame(v,e)
