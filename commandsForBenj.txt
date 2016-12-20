@@ -1,0 +1,4 @@
+bdutil -p jhubigdata --bucket jhubigdata -P test --env_var_files ~Rachel/Applications/bdutil-1.3.5/extensions/spark/spark_env.sh -F gs -M n1-standard-1 -m n1-standard-2 -n 1 --worker_attached_pds_size_gb 60 -z us-east1-c -i ubuntu-14-04 deploy
+
+
+spark-submit --packages graphframes:graphframes:0.2.0-spark1.5-s_2.10 --executor-memory 6G fullSparkSubmitRun.py -f /home/Rachel/ERR188044_sorted.bam -o /output/fixedDataSet4Nodes/ -k 8
