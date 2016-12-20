@@ -4,6 +4,7 @@ import cPickle as pickle
 from pyspark import SparkContext, SparkConf
 from pyspark.sql import SQLContext
 from pyspark import SparkFiles
+from collections import Counter
 
 conf = SparkConf()
 sc = SparkContext(conf=conf)
@@ -24,6 +25,8 @@ num_partitions = args.num_parts
 
 sc.addPyFile('/home/Rachel/bigdata16/gtf_merge.py')
 sc.addPyFile('/home/Rachel/bigdata16/overlapParser.py')
+sc.addPyFile('/home/Rachel/bigdata16/machine.py')
+sc.addPyFile('/home/Rachel/bigdata16/load_balancing.py')
 sc.addFile(in_fname)
 sc.addFile(in_fname+'.bai')
 sc.addFile("/home/Rachel/bigdata16/stringtie_mod")
@@ -32,6 +35,8 @@ sc.addFile("/usr/bin/samtools")
 
 from overlapParser import OverlapParser
 from gtf_merge import *
+import machine
+import load_balancing
 
 PRINT_DEBUG = False
 MULTIMAP_FLAG = "NH"
@@ -59,10 +64,22 @@ vertex_strings = [(str(i),) for i in  xrange(len(groups))]
 e = sqlContext.createDataFrame(edge_tuples_strings, ['src', 'dst'])
 v = sqlContext.createDataFrame(vertex_strings, ['id'])
 g = GraphFrame(v,e)
-result_rdd = g.connectedComponents().rdd
-
+result = g.connectedComponents()
+result_rdd = result.rdd
+result_rdd.persist()
 component_to_group_rdd = result_rdd.flatMap(lambda row: rowLambda(row))
-partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions)
+
+component_to_reads_counter = Counter()
+# result_collected is the collected GraphFrame result
+for row in result_rdd.collect():
+    component = int(row[1])
+    groupID = int(row[0])
+    component_to_reads_counter[component] += groups[groupID][0]
+
+component_to_machine = load_balancing.run_greedy_load_balancing(num_partitions, component_to_reads_counter)
+partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions, lambda k: component_to_machine[k])
+
+#partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions)
 partitioned_rdd.persist()
 
 def sumAll(partitionIter):
