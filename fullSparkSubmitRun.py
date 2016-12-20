@@ -79,7 +79,9 @@ gtfFileL = merge_gtfs(gtfList, group_nums_rdd.collect())
 # Should either have Sam's code work entirely with rdds, or use pydoop or 
 # something to write to hdfs.
 gtfFile_rdd = sc.parallelize(gtfFileL)
-gtfFile_rdd.saveAsTextFile(out_dir.strip('/')+'/'+in_fname.strip('bam')[in_fname[in_fname.rfind('/')+1:]+'gtf')
+gtfFile_rdd.saveAsTextFile(out_dir.strip('/')+'/'+in_fname.strip('bam')[in_fname.rfind('/')+1:]+'gtf')
 
 sc.stop()
+
+
 
