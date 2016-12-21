@@ -6,10 +6,10 @@ tmp_filename="stringtie_tmp_$$.txt"
 #rm -f $tmp_filename
 touch $tmp_filename
 
-samtools view -H ERR188044_sorted.bam >> $tmp_filename
+#samtools view -H ERR188044_sorted.bam >> $tmp_filename
 
-#echo -e "@HD\tVN:1.0\tSO:coordinate" >> $tmp_filename
-#echo -e "@SQ\tSN:chrX\tLN:156040895" >> $tmp_filename
+echo -e "@HD\tVN:1.0\tSO:coordinate" >> $tmp_filename
+echo -e "@SQ\tSN:chrX\tLN:156040895" >> $tmp_filename
 
 while read line
 do
