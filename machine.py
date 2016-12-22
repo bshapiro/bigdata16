@@ -1,4 +1,8 @@
 class Machine:
+    """
+    Machine object for doing load balancing. In future, can extend this object
+    to track partitions, partition results, etc.
+    """
 
     def __init__(self, id):
         self.load = 0
