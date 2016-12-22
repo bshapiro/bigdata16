@@ -1,8 +1,10 @@
-import sys, os, argparse, re
+import re
+import sys
 
 fpkm_re = re.compile("FPKM \"([\d\.]+)\"")
 tpm_re = re.compile("TPM \"([\d\.]+)\"")
 cov_re = re.compile("cov \"([\d\.]+)\"")
+
 
 def main(args):
     files = ["../data/ERR188044_chrX_half1.gtf", "../data/ERR188044_chrX_half2.gtf"]
@@ -14,15 +16,13 @@ def main(args):
     gtfs = [open(f).readlines() for f in files]
     for line in merge_gtfs(gtfs, sizes):
         print line
-    
+
 
 def merge_gtfs(gtfs, sizes):
-    
     total_size = sum(sizes)
-    
-    fpkms = list() #Stores normalized FPKMs for each transcript
+    fpkms = list()  # stores normalized FPKMs for each transcript
 
-    file_rpks = list() #Stores sum of transcript RPK values (fpkm*size) for each file
+    file_rpks = list()  # stores sum of transcript RPK values (fpkm*size) for each file
     #file_covs = list()
 
     #total_fpkm = 0.0
@@ -43,19 +43,19 @@ def merge_gtfs(gtfs, sizes):
                 fpkms.append(new_fpkm)
                 file_fpkm += new_fpkm
                 #total_fpkm += new_fpkm
-        
+
         file_rpks.append(file_fpkm * total_size)
         #file_covs.append(file_cov)
-    
+
     total_rpk = sum(file_rpks)
 
-    out_lines = list() 
+    out_lines = list()
 
     f = 0
     r = 0
-    for file_lines in gtfs: 
+    for file_lines in gtfs:
         tpm_factor = file_rpks[r] / total_rpk
-        r += 1  
+        r += 1
 
         for line in file_lines:
             if line[0] == "#":

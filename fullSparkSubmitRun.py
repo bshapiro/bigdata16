@@ -1,27 +1,49 @@
-from graphframes import GraphFrame
-import sys, os, argparse, re, pysam
-import cPickle as pickle
-from pyspark import SparkContext, SparkConf
-from pyspark.sql import SQLContext
-from pyspark import SparkFiles
 from collections import Counter
+from graphframes import GraphFrame
+from pyspark import SparkContext, SparkConf
+from pyspark import SparkFiles
+from pyspark.sql import SQLContext
+import argparse
+import sys
+
+#####################################################################################
+# Start by setting up Spark.
+#####################################################################################
 
 conf = SparkConf()
 sc = SparkContext(conf=conf)
 sqlContext = SQLContext(sc)
 
+#####################################################################################
+# Command-line arguments.
+#####################################################################################
+
 parser = argparse.ArgumentParser(description="")
-parser.add_argument('-f', dest='in_fname', required=True, type=str, help="Position sorted BAM file. Indexed bam.bai file must be present in same directory.")
-parser.add_argument('-o', dest='out_dir', default='/', type=str, help="Output directory. Default is home hdfs directory / ")
-parser.add_argument('-g', dest='max_gap', default=100, type=int, help="Maximum gap between two reads for them to be part of same group")
-parser.add_argument('-d', dest='debug', action='store_true', help="Print debug messages to stderr (if -O not also included)")
-parser.add_argument('-k', dest='num_parts', default=10, type=int, help="Number partitions, default=10")
+parser.add_argument('-f', dest='in_fname', required=True, type=str,
+                    help="Position sorted BAM file. Indexed bam.bai file must \
+                    be present in same directory.")
+parser.add_argument('-o', dest='out_dir', default='/', type=str,
+                    help="Output directory. Default is home hdfs directory / ")
+parser.add_argument('-g', dest='max_gap', default=100, type=int,
+                    help="Maximum gap between two reads for them to be part of \
+                    same group")
+parser.add_argument('-d', dest='debug', action='store_true',
+                    help="Print debug messages to stderr (if -O not also included)")
+parser.add_argument('-k', dest='num_parts', default=10, type=int,
+                    help="Number partitions, default=10")
 
 args = parser.parse_args(sys.argv[1:])
 in_fname = args.in_fname
 out_dir = args.out_dir
 max_gap = args.max_gap
 num_partitions = args.num_parts
+PRINT_DEBUG = False
+MULTIMAP_FLAG = "NH"
+MAX_GAP = max_gap
+
+#####################################################################################
+# Add python scripts for external steps, data files, and stringtie/samtools scripts.
+#####################################################################################
 
 sc.addPyFile('/home/Rachel/bigdata16/gtf_merge.py')
 sc.addPyFile('/home/Rachel/bigdata16/overlapParser.py')
@@ -33,26 +55,37 @@ sc.addFile("/home/Rachel/bigdata16/stringtie_mod")
 sc.addFile("/usr/bin/stringtie")
 sc.addFile("/usr/bin/samtools")
 
-from overlapParser import OverlapParser
 from gtf_merge import *
-import machine
+from overlapParser import OverlapParser
 import load_balancing
 
-PRINT_DEBUG = False
-MULTIMAP_FLAG = "NH"
-MAX_GAP = 100
-        
+
 def rowLambda(row):
+    """
+    Map a component & group to all the corresponding SAM lines, keyed by component.
+    """
     spark_fname = SparkFiles.get(in_fname[in_fname.rfind('/')+1:])
     ovr = OverlapParser(spark_fname, max_gap)
     group = groups[int(row[0])]
     return [(row[1], (samLine, group[0], row[0])) for samLine in ovr.get_group(group)]
 
+
+def sumAll(partitionIter):
+    """
+    Calculates the number of primary alignments in the partition (does not
+    include multi-mapped reads.) This number is used for normalization for
+    TPM/RPKM.
+    """
+    yield sum([tup[0] for tup in set([line[1][1:] for line in partitionIter])])
+
+
+#####################################################################################
+# Compile the list of overlaps between groups (edges in our graph)
+#####################################################################################
+
 ovr = OverlapParser(in_fname, max_gap)
-    
 edge_tuples_strings = list()
 groups = list()
-
 while True:
     group, cons = ovr.next_group()
     if not group:
@@ -60,45 +93,58 @@ while True:
     groups.append(group)
     edge_tuples_strings.extend([(str(item[0]), str(item[1])) for item in cons])
 
-vertex_strings = [(str(i),) for i in  xrange(len(groups))]
+#####################################################################################
+# Set up the GraphFrame dataframes (vertices and edges) and run connected components
+# analysis.
+#####################################################################################
+
 e = sqlContext.createDataFrame(edge_tuples_strings, ['src', 'dst'])
+vertex_strings = [(str(i),) for i in xrange(len(groups))]
 v = sqlContext.createDataFrame(vertex_strings, ['id'])
-g = GraphFrame(v,e)
+g = GraphFrame(v, e)
 result = g.connectedComponents()
 result_rdd = result.rdd
 result_rdd.persist()
-component_to_group_rdd = result_rdd.flatMap(lambda row: rowLambda(row))
+
+#####################################################################################
+# Use greedy load balancing to generate a map between components and workers.
+#####################################################################################
 
 component_to_reads_counter = Counter()
-# result_collected is the collected GraphFrame result
 for row in result_rdd.collect():
     component = int(row[1])
     groupID = int(row[0])
     component_to_reads_counter[component] += groups[groupID][0]
-
 component_to_machine = load_balancing.run_greedy_load_balancing(num_partitions, component_to_reads_counter)
-partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions, lambda k: component_to_machine[k])
 
-#partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions)
+#####################################################################################
+# Partition the RDD that maps components to groups of SAM reads, acccording to the
+# component_to_machine map previously generated by our load balancing algorithm.
+#####################################################################################
+
+component_to_group_rdd = result_rdd.flatMap(lambda row: rowLambda(row))
+partitioned_rdd = component_to_group_rdd.partitionBy(num_partitions, lambda k: component_to_machine[k])
 partitioned_rdd.persist()
 
-def sumAll(partitionIter):
-    yield sum([tup[0] for tup in set([line[1][1:] for line in partitionIter])])
+#####################################################################################
+# Filter the partitioned RDD to contain only SAM information, and then pipe the RDD
+# to the script which runs StringTie on this portion of the dataset.
+#####################################################################################
 
-group_nums_rdd = partitioned_rdd.mapPartitions(sumAll)
-sam_only_partitions = partitioned_rdd.map(lambda line: line[1][0], preservesPartitioning=True)
+sam_only_partitions = partitioned_rdd.map(lambda line: line[1][0], preservesPartitioning=True)  # filter the RDD to just SAM information
 piped_output = sam_only_partitions.pipe("stringtie_mod")
 
-gtfList = piped_output.glom().collect()
-gtfFileL = merge_gtfs(gtfList, group_nums_rdd.collect())
+#####################################################################################
+# Collect the piped output from all the partitions. Calculate the number of primary
+# alignments in each partition, and then use those numbers to merge the GTF files
+# with properly normalized TPM and RPKM measurements.
+#####################################################################################
 
-# Super hacky, but I'm putting the list into an rdd to I can save to hdfs.
-# Should either have Sam's code work entirely with rdds, or use pydoop or 
-# something to write to hdfs.
+gtfList = piped_output.glom().collect()
+num_alignments_rdd = partitioned_rdd.mapPartitions(sumAll)
+gtfFileL = merge_gtfs(gtfList, num_alignments_rdd.collect())
+
 gtfFile_rdd = sc.parallelize(gtfFileL)
 gtfFile_rdd.saveAsTextFile(out_dir.strip('/')+'/'+in_fname.strip('bam')[in_fname.rfind('/')+1:]+'gtf')
 
 sc.stop()
-
-
-

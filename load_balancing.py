@@ -21,5 +21,4 @@ def run_greedy_load_balancing(num_machines, component_read_counter):
         machine.assign_component(component_id, read_count)
         component_to_machine_id[component_id] = machine.get_id()
         machines.put(machine)
-    #return list(machines.queue)
     return component_to_machine_id
