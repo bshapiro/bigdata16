@@ -1,7 +1,8 @@
-import sys, os, argparse, re, pysam
+import pysam
 
 MAX_GAP = 100
 MULTIMAP_FLAG = "NH"
+
 
 class OverlapParser:
 
@@ -14,13 +15,12 @@ class OverlapParser:
         self.multimappers = dict()
         self.connections = set()
         self.prev_ref = None
-        self.max_gap=max_gap
-        self.filename=filename
+        self.max_gap = max_gap
+        self.filename = filename
         self.infile = pysam.AlignmentFile(filename, 'rb')
         self.reads_iter = self.infile.fetch()
-
         self.eof = False
-        
+
     def next_group(self):
 
         if self.eof:
@@ -29,7 +29,7 @@ class OverlapParser:
         group = None
         con_list = list()
 
-        while group == None:
+        while group is None:
             try:
                 read = self.reads_iter.next()
             except StopIteration:
@@ -37,13 +37,13 @@ class OverlapParser:
                 self.eof = True
 
             group, con = self.parse_read(read)
-           
+
             if con:
                 con_list.extend(con)
 
         return group, con_list
-    
-    def get_group(self, group): 
+
+    def get_group(self, group):
         lines = list()
         _, ref, st, en = group
         for read in self.infile.fetch(ref, st, en):
@@ -53,13 +53,11 @@ class OverlapParser:
         return lines
 
     def write_groups(self, groups, filename):
-
-        outfile = pysam.AlignmentFile(filename, "wb", template = self.infile)
+        outfile = pysam.AlignmentFile(filename, "wb", template=self.infile)
 
         if type(groups[0]) != tuple:
             groups = [groups]
 
-        lines = list()
         for size, ref, st, en in groups:
             for read in self.infile.fetch(ref, st, en):
                 outfile.write(read)
@@ -67,11 +65,9 @@ class OverlapParser:
         outfile.close()
 
     def parse_read(self, read):
-        
         ovr_ret = con_ret = None
-        
         if not read:
-            return ( self.unique_reads, self.prev_ref, self.gmin, self.gmax), None
+            return (self.unique_reads, self.prev_ref, self.gmin, self.gmax), None
 
         if read.is_unmapped:
             return None, None
@@ -87,14 +83,14 @@ class OverlapParser:
             self.gmax = read.reference_end
         else:
             self.gmax = max(self.gmax, read.reference_end)
-        
+
         self.group_size += 1
 
         if read.flag & 0x900 == 0:
             self.unique_reads += 1
 
         self.prev_ref = read.reference_name
-        
+
         if read.get_tag(MULTIMAP_FLAG) > 1:
             neighbors = self.multimappers.get(read.query_name, None)
             if not neighbors:
