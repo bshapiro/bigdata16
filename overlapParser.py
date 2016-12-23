@@ -3,15 +3,17 @@ import pysam
 MAX_GAP = 100
 MULTIMAP_FLAG = "NH"
 
-###################################################################
-# Creates groups of overlapping/neighboring reads from BAM file   #
-# Contains methods for iterating over groups and extracting reads #
-###################################################################
+
 class OverlapParser:
-    
-    # Constructor
-    # Takes filename for BAM file and maximum distance for reads to be in same group
+    """
+    Creates groups of overlapping/neighboring reads from BAM file.
+    Contains methods for iterating over groups and extracting reads.
+    """
+
     def __init__(self, filename=None, max_gap=100):
+        """
+        Takes filename for BAM file and maximum distance for reads to be in same group
+        """
         self.group_size = 0
         self.unique_reads = 0
         self.gmax = 0
@@ -25,39 +27,37 @@ class OverlapParser:
         self.infile = pysam.AlignmentFile(filename, 'rb')
         self.reads_iter = self.infile.fetch()
         self.eof = False
-    
-    # Returns tuple of next group in list and any new edges between groups
+
     def next_group(self):
-        
-        #File contains no more reads
-        if self.eof:
+        """
+        Returns tuple of next group in list and any new edges between groups
+        """
+
+        if self.eof:  # file contains no more reads
             return None, None
 
         group = None
         con_list = list()
-        
-        #Keep parsing reads until next group is found
-        while group is None:
 
-            #Get next read
-            try:
+        while group is None:  # keep parsing reads until next group is found
+
+            try:  # get next read
                 read = self.reads_iter.next()
             except StopIteration:
                 read = None
                 self.eof = True
-            
-            #Parse read
-            #Group will be None unless this read ends a group
-            group, con = self.parse_read(read)
 
-            #Add new edge if any returned
-            if con:
+            group, con = self.parse_read(read)  # group will be None unless this read ends a group
+
+            if con:  # add new edge if any returned
                 con_list.extend(con)
 
         return group, con_list
 
-    #Returns all SAM lines contained in a group
     def get_group(self, group):
+        """
+        Returns all SAM lines contained in a group
+        """
         lines = list()
         _, ref, st, en = group
         for read in self.infile.fetch(ref, st, en):
@@ -65,8 +65,10 @@ class OverlapParser:
                 lines.append(read.tostring(self.infile))
         return lines
 
-    #Writes SAM/BAM lines from a list of groups to a file
     def write_groups(self, groups, filename):
+        """
+        Writes SAM/BAM lines from a list of groups to a file.
+        """
         outfile = pysam.AlignmentFile(filename, "wb", template=self.infile)
 
         if type(groups[0]) != tuple:
@@ -78,66 +80,56 @@ class OverlapParser:
 
         outfile.close()
 
-    #Parses a SAM/BAM file read and returns group information
-    #Returns new group if read is outside of the current group (new group will be started)
-    #Also returns edges if a read is multimapped or mated with a read in another group
     def parse_read(self, read):
+        """
+        Parses a SAM/BAM file read and returns group information.
+        Returns new group if read is outside of the current group
+        (new group will be started). Also returns edges if a read
+        is multimapped or mated with a read in another group.
+        """
 
-        #Return values
-        ovr_ret = con_ret = None
+        ovr_ret = con_ret = None  # return values
 
-        #Return current group if no read provided
-        if not read:
+        if not read:  # return current group if no read provided
             return (self.unique_reads, self.prev_ref, self.gmin, self.gmax), None
 
-        #No new group or connection if read unmapped
-        if read.is_unmapped:
+        if read.is_unmapped:  # no new group or connection if read unmapped
             return None, None
 
-        #Check if read is outside of current group
+        # check if read is outside of current group
         if read.reference_start - self.gmax > self.max_gap or self.prev_ref != read.reference_name:
 
-            #Set group return value if it contains any reads
-            #Reset group number and read counts
-            if self.group_size > 0:
+            if self.group_size > 0:  # set group return value if it contains any reads
                 ovr_ret = (self.unique_reads, self.prev_ref, self.gmin, self.gmax)
                 self.group_nm += 1
-                self.group_size = 0
+                self.group_size = 0  # reset group number and read counts
                 self.unique_reads = 0
 
-            #Set new group bounds
+            # set new group bounds
             self.gmin = read.reference_start
             self.gmax = read.reference_end
 
-        #Update current group bounds
-        else:
+        else:  # update current group bounds
             self.gmax = max(self.gmax, read.reference_end)
 
-        #Add read to group size
-        self.group_size += 1
+        self.group_size += 1  # add read to group size
 
-        #Update number of primary alignments
-        if read.flag & 0x900 == 0:
+        if read.flag & 0x900 == 0:  # update number of primary alignments
             self.unique_reads += 1
 
-        #Update previous reference (chromosome) value
-        #Used to keep track of group bounds
+        # Update previous reference (chromosome) value
+        # Used to keep track of group bounds
         self.prev_ref = read.reference_name
 
-        #Check if read is multimapped - need to keep track of edges
-        if read.get_tag(MULTIMAP_FLAG) > 1:
+        if read.get_tag(MULTIMAP_FLAG) > 1:  # check if read is multimapped - need to keep track of edges 
 
-            #Find current read edges if they exist
             neighbors = self.multimappers.get(read.query_name, None)
-            if not neighbors:
+            if not neighbors:  # find current read edges if they exist
                 neighbors = self.multimappers[read.query_name] = set([self.group_nm])
 
-            #Create new group edge if it doesn't exist
-            if not self.group_nm in neighbors:
-                
-                #Create edge for each matching read
+            if not self.group_nm in neighbors:  # create new group edge if it doesn't exist
                 con_ret = list()
-                for g in sorted(neighbors):
+                for g in sorted(neighbors):  # create edge for each matching read
                     if not (g, self.group_nm) in self.connections:
                         con_ret.append((g, self.group_nm))
                         self.connections.add((g, self.group_nm))
